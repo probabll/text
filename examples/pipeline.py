@@ -1,16 +1,23 @@
 from itertools import tee
 
 from text import SentenceSplit, Preprocess, EnsureMaxLength, Postprocess
-from text import SentenceSegmenter, Pipeline, Tokenizer, Lowercaser, WordSegmenter
+from text import SentenceSegmenter, Pipeline
+from text import Tokenizer, Lowercaser, WordSegmenter
+from text import Detokenizer, Recaser, WordDesegmenter
 
 
 path = "raw.en"
 
 pipeline = Pipeline(
-    [
-        Tokenizer("en", "en"),
-        Lowercaser(),
+    pre=[
+        Tokenizer("en"),
+        Lowercaser("en"),
         WordSegmenter("data/bpe_codes.en", separator="@@")
+    ],
+    post=[
+        WordDesegmenter(separator="@@"),
+        Recaser("en"),
+        Detokenizer("en"),
     ]
 )
 
@@ -19,6 +26,7 @@ generator, it = tee(generator, 2)
 print("# After open()")
 for sentence in it:
     print(sentence.strip())
+print()
 
 generator = SentenceSplit(SentenceSegmenter("en"), read_n=1)(generator)
 generator, it = tee(generator, 2)
@@ -34,7 +42,7 @@ for sentence in it:
     print(sentence)
 print()
 
-length_adapter = EnsureMaxLength(max_length=10, split=True)
+length_adapter = EnsureMaxLength(max_length=-1, split=True)
 generator = length_adapter(generator)
 generator, it = tee(generator, 2)
 print("# After EnsureMaxLength")

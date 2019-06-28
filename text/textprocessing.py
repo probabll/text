@@ -13,157 +13,128 @@ class SentenceSegmenter:
     For now this only supports the Moses sentence splitter (via mosestokenizer wrapper).
     """
 
-    def __init__(self, language_code: str):
-        """
-
-        :param language_code:
-        """
+    def __init__(self, language_code):
         self.language_code = language_code
 
-    def split(self, data: list):
-        data = [line for line in data if line.strip()]  # empty strings are not accepted by the wrapper
+    def split(self, data: list) -> list:
+        data = [line for line in data if line.strip()]
         if len(data):
             with MosesSentenceSplitter(self.language_code) as splitter:
                 data = splitter(data)
         return data
 
 
-class TextProcess:
+class TextProcessingModule:
     """
     A generic interface for pre-processing and post-processing strings.
     """
 
-    def pre(self, line: str) -> str:
-        return line
-
-    def post(self, line: str) -> str:
+    def __call__(self, line: str) -> str:
         return line
 
 
-class Tokenizer(TextProcess):
+class Tokenizer(TextProcessingModule):
     """
-    Wrapper around sacremoses.MosesTokenizer and MosesDetokenizer.
-
-    This takes two parameters src_tokenizer_lang and tgt_tokenizer_lang and provides:
-    * pre: source tokenization
-    * post: target tokenization
-
-    Note that this can be used monolingually,
-        simply use the same language id for both src_tokenizer_lang and tgt_tokenizer.
+    Wrapper around sacremoses.MosesTokenizer
     """
 
-    def __init__(self, src_tokenizer_lang, tgt_tokenizer_lang):
-        self.src_tokenizer = sacremoses.MosesTokenizer(src_tokenizer_lang) if src_tokenizer_lang else None
-        self.tgt_detokenizer = sacremoses.MosesDetokenizer(tgt_tokenizer_lang) if tgt_tokenizer_lang else None
+    def __init__(self, lang):
+        self.tokenizer = sacremoses.MosesTokenizer(lang)
 
-    def pre(self, line: str) -> str:
-        if self.src_tokenizer:
-            return self.src_tokenizer.tokenize(line, return_str=True)
-        else:
-            return line
-
-    def post(self, line: str) -> str:
-        if self.tgt_detokenizer:
-            return self.tgt_detokenizer.detokenize(line.split(), return_str=True)
-        else:
-            return line
+    def __call__(self, line: str) -> str:
+        return self.tokenizer.tokenize(line, return_str=True)
 
 
-class Lowercaser(TextProcess):
+class Detokenizer(TextProcessingModule):
     """
-    Wrapper around str.lower and sacremoses.MosesDetruecaser.
-
-    * pre: lowercasing
-    * post: detruecasing
+    Wrapper around sacremoses.MosesDetokenizer
     """
 
-    def __init__(self):
-        self.tgt_detruecaser = sacremoses.MosesDetruecaser()
+    def __init__(self, lang):
+        self.detokenizer = sacremoses.MosesDetokenizer(lang)
 
-    def pre(self, line: str) -> str:
+    def __call__(self, line: str) -> str:
+        return self.detokenizer.detokenize(line.split(), return_str=True)
+
+
+class Lowercaser(TextProcessingModule):
+    """
+    Wrapper around python string.lower()
+    """
+
+    def __init__(self, lang):
+        pass
+
+    def __call__(self, line: str) -> str:
         return line.lower()
 
-    def post(self, line: str) -> str:
-        if self.tgt_detruecaser:
-            return self.tgt_detruecaser.detruecase(line, return_str=True)
-        else:
-            return line
 
-
-class Truecaser(TextProcess):
+class Truecaser(TextProcessingModule):
     """
-    Wrapper around sacremoses.MosesTruecaser.
-
-    This takes two parameters src_tokenizer_lang and tgt_tokenizer_lang and provides:
-    * pre: source truecasing
-    * post: target detruecasing
-
-    Note that this can be used monolingually,
-        simply use the same file for both src_truecase_model and tgt_truecase_model.
+    Wrapper around sacremoses.MosesTruecaser
     """
 
-    def __init__(self, src_truecase_model, tgt_truecase_model):
-        self.src_truecaser = sacremoses.MosesTruecaser(src_truecase_model) if src_truecase_model else None
-        self.tgt_detruecaser = sacremoses.MosesDetruecaser() if tgt_truecase_model else None
+    def __init__(self, truecase_model):
+        self.truecaser = sacremoses.MosesTruecaser(truecase_model)
+
+    def __call__(self, line: str) -> str:
+        return self.truecaser.truecase(line, return_str=True)
+
+
+class Recaser(TextProcessingModule):
+    """
+    Wrapper around sacremoses.MosesDetruecaser
+    """
+
+    def __init__(self, lang):
+        self.recaser = sacremoses.MosesDetruecaser()
+
+    def __call__(self, line: str) -> str:
+        return self.recaser.detruecase(line, return_str=True)
+
+
+class WordSegmenter(TextProcessingModule):
+    """
+    Wrapper around subword_nmt.apply_bpe.BPE
+    """
+
+    def __init__(self, bpe_codes, separator="@@", encoding='utf-8'):
+        self.separator = separator.strip()
+        self.bpe = BPE(
+            codecs.open(bpe_codes, encoding=encoding),
+            separator=self.separator)
+
+    def __call__(self, line: str) -> str:
+        return self.bpe.process_line(line)
+
+
+class WordDesegmenter(TextProcessingModule):
+    """
+    Wrapper around a regex expression.
+    """
+
+    def __init__(self, separator="@@", encoding='utf-8'):
+        self.separator = separator.strip()
+
+    def __call__(self, line: str) -> str:
+        return re.sub(f"({self.separator} )|({self.separator} ?$)|( {self.separator})|(^ ?{self.separator})", "", line)
+
+
+class Pipeline:
+    """
+    Applies a sequence of preprocessing or postprocessing steps
+    """
+
+    def __init__(self, pre=[], post=[]):
+        self._pre = pre
+        self._post = post
 
     def pre(self, line: str) -> str:
-        if self.src_truecaser:
-            return self.src_truecaser.truecase(line, return_str=True)
-        else:
-            return line
-
-    def post(self, line: str) -> str:
-        if self.tgt_detruecaser:
-            return self.tgt_detruecaser.detruecase(line, return_str=True)
-        else:
-            return line
-
-
-class WordSegmenter(TextProcess):
-    """
-        Wrapper around subword_nmt.apply_bpe.BPE
-
-        This takes two parameters src_bpe_codes and separator and provides:
-        * pre: BPE segmentation
-        * post: regex for merging segments
-        """
-
-    def __init__(self, src_bpe_codes, separator="@@", encoding='utf-8'):
-        separator = separator.strip() if separator else separator
-        self.src_bpe = BPE(
-            codecs.open(src_bpe_codes, encoding=encoding), separator=separator) if src_bpe_codes else None
-        self.separator = separator
-
-    def pre(self, line: str) -> str:
-        if self.src_bpe:
-            return self.src_bpe.process_line(line)
-        else:
-            return line
-
-    def post(self, line: str) -> str:
-        if self.separator:
-            return re.sub(f"({self.separator} )|({self.separator} ?$)|( {self.separator})|(^ ?{self.separator})", "", line)
-        else:
-            return line
-
-
-class Pipeline(TextProcess):
-    """
-    A generic pipeline takes a list of TextProcess objects and provides:
-
-    * pre: applies pipeline in order making calls to pre(str)
-    * post: applies pipeline in reversed order making calls to post(str)
-    """
-
-    def __init__(self, pipeline=[]):
-        self.pipeline = pipeline
-
-    def pre(self, line: str) -> str:
-        for module in self.pipeline:
-            line = module.pre(line)
+        for module in self._pre:
+            line = module(line)
         return line
 
     def post(self, line: str) -> str:
-        for module in reversed(self.pipeline):
-            line = module.post(line)
+        for module in self._post:
+            line = module(line)
         return line
