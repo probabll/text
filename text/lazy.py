@@ -1,36 +1,24 @@
 """
-All classes in this module manipulate generators, this means they *never* load the entire dataset to memory.
-One exception is SentenceSplit(segmenter, read_n=-1),  see documentation below.
-
-They all have the same API, generator comes in, generator comes out.
-Generators (input or output) are assumed to yield a strings (e.g. a line in a file) whenever undergo next(...).
-
+A TextTransformer takes and returns a generator of strings:
+    * this means they *never* load the entire dataset to memory
+    * one exception is SentenceSplit(segmenter, read_n=-1),  but see documentation below.
 """
 
-from text.textprocessing import Pipeline, SentenceSegmenter
+from text.textprocessing import SentenceSegmenter, StringToString
+
+from typing import Iterable, List
 
 
-class Preprocess:
+class TextTransformer:
+    """
+    General transformations to text.
+    """
 
-    def __init__(self, pipeline: Pipeline):
-        self.pipeline = pipeline
-
-    def __call__(self, generator):
-        for line in generator:
-            yield self.pipeline.pre(line.strip())
-
-
-class Postprocess:
-
-    def __init__(self, pipeline: Pipeline):
-        self.pipeline = pipeline
-
-    def __call__(self, generator):
-        for line in generator:
-            yield self.pipeline.post(line.strip())
+    def __call__(self, generator:  Iterable[str]) -> Iterable[str]:
+        yield from generator
 
 
-class SentenceSplit:
+class SentenceSplit(TextTransformer):
     """
     Generator of sentence-segmented data.
     """
@@ -45,24 +33,24 @@ class SentenceSplit:
         self.segmenter = segmenter
         self.read_n = read_n
 
-    def __call__(self, generator):
+    def __call__(self, generator: Iterable[str]) -> Iterable[str]:
         if self.read_n > 0:
             batch = []
             for line in generator:
                 batch.append(line)
                 if len(batch) >= self.read_n:
-                    for sentence in self.segmenter.split(batch):
+                    for sentence in self.segmenter(batch):
                         yield sentence
                     batch = []
             if len(batch) > 0:
-                for sentence in self.segmenter.split(batch):
+                for sentence in self.segmenter(batch):
                     yield sentence
         else:
-            for sentence in self.segmenter.split([line for line in generator]):
+            for sentence in self.segmenter([line for line in generator]):
                 yield sentence
 
 
-class EnsureMaxLength:
+class EnsureMaxLength(TextTransformer):
     """
     This wrapper chops sentences enforcing a maximum length, but this is different from SentenceSplit
     * SentenceSplit uses punctuation to determine where to segment strings into sentences
@@ -104,7 +92,7 @@ class EnsureMaxLength:
                 break
         return output
 
-    def __call__(self, generator):
+    def __call__(self, generator: Iterable[str]) -> Iterable[str]:
         if self.max_length < 0:
             yield from generator
         for line in generator:
@@ -121,7 +109,7 @@ class EnsureMaxLength:
                 for part in parts:
                     yield ' '.join(part)
 
-    def join(self, generator):
+    def join(self, generator: Iterable[str]) -> Iterable[str]:
         if self.max_length < 0 or not self.split:
             yield from generator
         else:
@@ -136,3 +124,20 @@ class EnsureMaxLength:
                     i += 1
                     yield ' '.join(parts)
                     parts = []
+
+
+class AlignedTextTransformer(TextTransformer):
+    """
+    Transformations that do not affect the number of lines in the text.
+    """
+    pass
+
+
+class TransformLines(AlignedTextTransformer):
+
+    def __init__(self, module: StringToString):
+        self.module = module
+
+    def __call__(self, generator: Iterable[str]) -> Iterable[str]:
+        for line in generator:
+            yield self.module(line)

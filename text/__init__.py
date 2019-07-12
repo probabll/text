@@ -4,7 +4,7 @@ from .vocabulary import Vocabulary
 from .textprocessing import SentenceSegmenter
 from .textprocessing import Tokenizer, Detokenizer
 from .textprocessing import Lowercaser, Truecaser, Recaser
-from .textprocessing import WordSegmenter, WordDesegmenter, Pipeline
+from .textprocessing import BPESegmenter, BPEDesegmenter, Pipeline
 from .lazy import Preprocess, Postprocess, SentenceSplit, EnsureMaxLength
 from .datasets import MemMappedCorpus, MemMappedParallelCorpus
 
@@ -13,6 +13,6 @@ __all__ = ["UNK_TOKEN", "PAD_TOKEN", "SOS_TOKEN", "EOS_TOKEN",
            "Vocabulary",
            "SentenceSegmenter", "Tokenizer", "Detokenizer",
            "Truecaser", "Lowercaser", "Recaser",
-           "WordSegmenter", "WordDesegmenter", "Pipeline",
+           "BPESegmenter", "BPEDesegmenter", "Pipeline",
            "Preprocess", "Postprocess", "SentenceSplit", "EnsureMaxLength",
            "MemMappedCorpus", "MemMappedParallelCorpus"]

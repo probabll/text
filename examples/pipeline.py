@@ -2,8 +2,8 @@ from itertools import tee
 
 from text import SentenceSplit, Preprocess, EnsureMaxLength, Postprocess
 from text import SentenceSegmenter, Pipeline
-from text import Tokenizer, Lowercaser, WordSegmenter
-from text import Detokenizer, Recaser, WordDesegmenter
+from text import Tokenizer, Lowercaser, BPESegmenter
+from text import Detokenizer, Recaser, BPEDesegmenter
 
 
 path = "raw.en"
@@ -12,10 +12,10 @@ pipeline = Pipeline(
     pre=[
         Tokenizer("en"),
         Lowercaser("en"),
-        WordSegmenter("data/bpe_codes.en", separator="@@")
+        BPESegmenter("data/bpe_codes.en", separator="@@")
     ],
     post=[
-        WordDesegmenter(separator="@@"),
+        BPEDesegmenter(separator="@@"),
         Recaser("en"),
         Detokenizer("en"),
     ]

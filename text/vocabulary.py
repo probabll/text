@@ -1,8 +1,9 @@
 """
-Take from AEVNMT.pt
+Note that we use str.split to tokenize strings
+    - if you need a char-level vocabulary, wrap your generators around CharLevelSegmenter
 """
 import sys
-from .constants import UNK_TOKEN, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
+from text.constants import UNK_TOKEN, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 
 
 class Vocabulary:
@@ -105,6 +106,41 @@ class Vocabulary:
 
             if freq >= min_freq and not (max_size > 0 and \
                     len(vocab.word_to_idx) == max_size+4) and word not in vocab.word_to_idx:
+                idx = len(vocab.word_to_idx)
+                vocab.word_to_idx[word] = idx
+                vocab.idx_to_word[idx] = word
+            else:
+                del vocab.word_freqs[word]
+
+        return vocab
+
+    @staticmethod
+    def from_generator(generator, min_freq=0, max_size=-1):
+        """
+        Creates a vocabulary from a list of data files.
+
+        This assumes that the data files have been tokenized and pre-processed.
+        The dictionary ids are sorted in word frequency in increasing order.
+
+        :param generator: A generator of rstripped lines.
+        :param min_freq: The minimum frequency of word occurrences in order to be included.
+        :param max_size: The maximum vocabulary size (excluding special tokens).
+        """
+        vocab = Vocabulary()
+
+        # Count word frequencies.
+        for line in generator:
+            for word in line.split():
+                if word not in vocab.word_freqs:
+                    vocab.word_freqs[word] = 1
+                else:
+                    vocab.word_freqs[word] += 1
+
+        # Fill the vocabulary based on word frequency.
+        for word, freq in sorted(vocab.word_freqs.items(), key=lambda kv: kv[1], reverse=True):
+
+            if freq >= min_freq and not (max_size > 0 and \
+                                         len(vocab.word_to_idx) == max_size + 4) and word not in vocab.word_to_idx:
                 idx = len(vocab.word_to_idx)
                 vocab.word_to_idx[word] = idx
                 vocab.idx_to_word[idx] = word

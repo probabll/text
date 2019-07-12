@@ -9,6 +9,64 @@ from torch.utils.data import Dataset
 from text.vocabulary import Vocabulary
 
 
+def readlines(filenames):
+    """Makes a generator for rstripped lines from a list of files"""
+    for filename in filenames:
+        with open(filename) as f:
+            for line in f:
+                yield line.rstrip()
+
+
+def basic_tokenize_parallel(generators: list, max_length=-1):
+    """
+    Reads in parallel tuples and returns a generator of tuples of sentences (each a list of string tokens).
+    Tokenization is done by string.split()
+
+    :param generators: a list of generators, each represents a stream of the corpus
+    :param max_length: if more than 0, discards a tuple if any of its sentences is longer than the value specified
+    :return: a generator of tuples of sentences (lists of string tokens)
+    """
+    for lines in zip(*generators):
+        sentences = [line.rstrip().split() for line in lines]
+        if 0 < max_length < max(len(sentence) for sentence in sentences):
+            continue
+        yield sentences
+
+
+def iterate_view(tuple_generator, stream):
+    """
+    Returns one view/stream of aligned data.
+
+    :param tuple_generator: a generator of tuples (aligned data)
+    :param stream: which stream we want
+    :return: a generator
+    """
+    for t in tuple_generator:
+        yield t[stream]
+
+
+def basic_tokenize(generator, max_length=-1):
+    """
+    Reads lines from a generator, tokenizes each line using str.split and filters long sentences.
+
+    :param generator: a generator of lines (each a string)
+    :param max_length: if more than 0, discards a tuple if any of its sentences is longer than the value specified
+    :return: a generator of tokenized sentences (each a list of string tokens)
+    """
+    return iterate_view(basic_tokenize_parallel([generator], max_length=max_length), stream=0)
+
+
+def map_tokens_to_ids(generator, vocab: Vocabulary):
+    """
+    Wraps a generator around a mapping function from string tokens to token ids.
+    :param generator: a generator of tokenized sentences (each a list of str tokens)
+    :param vocab:
+    :return: generator of coded sentences (each a list of integer codes)
+    """
+    for sentence in generator:
+        yield [vocab[word] for word in sentence]
+
+
 class MemMappedCorpus(Dataset):
     """
     A memory mapped Dataset:
@@ -25,23 +83,6 @@ class MemMappedCorpus(Dataset):
             offsets[i] = offset
             offset += seq_len
         return offsets
-
-    @staticmethod
-    def map_tokens_to_ids(generator, vocab: Vocabulary):
-        """
-        Wraps a generator around a mapping function from string tokens to token ids.
-        :param generator:
-        :param vocab:
-        :return: generator
-        """
-        for sentence in generator:
-            yield [vocab[word] for word in sentence]
-
-    @staticmethod
-    def iterate_view(generator, stream):
-        """Returns one element of the tuple"""
-        for t in generator:
-            yield t[stream]
 
     @staticmethod
     def construct_memmap(generator, lengths, output_path, dtype):
@@ -65,43 +106,13 @@ class MemMappedCorpus(Dataset):
         del mmap
         return np.array(offsets, dtype=dtype)
 
-    @staticmethod
-    def basic_tokenize_parallel(files: list, max_length=-1):
-        """
-        Reads in parallel tuples and returns a generator of tuples of sentences (each a list of string tokens).
-        Tokenization is done by string.split()
-
-        :param files: each file in this list is one stream of the corpus.
-        :param max_length: if more than 0, discards a tuple if any of its sentences is longer than the value specified
-        :return: a generator of tuples of sentences (lists of string tokens)
-        """
-
-        handlers = []
-        for path in files:
-            handlers.append(open(path))
-
-        for lines in zip(*handlers):
-            sentences = [line.strip().split() for line in lines]
-            if 0 < max_length < max(len(sentence) for sentence in sentences):
-                continue
-            yield sentences
-
-        for h in handlers:
-            h.close()
-
-    @staticmethod
-    def get_generator(path: str, max_length=-1):
-        generator = MemMappedCorpus.iterate_view(
-            MemMappedCorpus.basic_tokenize_parallel([path], max_length=max_length), stream=0)
-        return generator
-
     def __init__(self, generator, output_path: str, vocab: Vocabulary,
                  dtype='int64', reuse=True, verbose=False):
         """
 
         :param generator: produces sequences of tokens (each a list of strings)
-            see MemMappedCorpus.get_generator
-        :param memmap_path:
+            see basic_tokenize
+        :param output_path:
         :param vocab:
         :param dtype:
         :param reuse: by default we reload already constructed memmaps
@@ -122,7 +133,7 @@ class MemMappedCorpus(Dataset):
             if verbose:
                 print("Constructing memory map", file=sys.stderr)
             self.offsets = MemMappedCorpus.construct_memmap(
-                MemMappedCorpus.map_tokens_to_ids(iterator2, vocab),
+                map_tokens_to_ids(iterator2, vocab),
                 self.lengths,
                 self.memmap_path,
                 dtype=dtype)
@@ -149,7 +160,7 @@ class MemMappedParallelCorpus(Dataset):
 
     @staticmethod
     def get_generator(paths: list, max_length=-1):
-        generator = MemMappedCorpus.basic_tokenize_parallel(paths, max_length=max_length)
+        generator = basic_tokenize_parallel(paths, max_length=max_length)
         return generator
 
     def __init__(self, generator, output_path: str, vocabs: 'list[Vocabulary]',
@@ -157,7 +168,7 @@ class MemMappedParallelCorpus(Dataset):
         """
 
         :param generator: A generator for parallel data (this should already take care of max_length constraints,
-            see MemMappedParallelCorpus.get_generator).
+            see basic_parallel_tokenize
         :param output_path: where to store files (this is considered a prefix)
         :param vocabs: list of Vocabulary objects (one per stream of the data)
         :param reuse: by default we load already stored data structures,
@@ -170,7 +181,7 @@ class MemMappedParallelCorpus(Dataset):
         self.corpora = []
         for i, it in enumerate(iterators[1:]):
             corpus = MemMappedCorpus(
-                generator=MemMappedCorpus.iterate_view(it, i),
+                generator=iterate_view(it, i),
                 output_path=f"{output_path}{i}",
                 vocab=vocabs[i],
                 dtype=dtype,

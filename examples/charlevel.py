@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from text.datasets import readlines
-from text.recipes import MonolingualWordLevel
+from text.recipes import MonolingualCharLevel
 from text.batching import SortingTextDataLoader, create_batch, batch_to_sentences
 
 
@@ -22,10 +22,11 @@ try:
 except:
     pass
 
-corpus_builder = MonolingualWordLevel(
+corpus_builder = MonolingualCharLevel(
     lang_code=src,  # irrelevant for now
     normalize_blanks=True,
     lowercase=False,
+    separator="@@",
     recase=False
 )
 
@@ -43,6 +44,7 @@ corpus = corpus_builder.make_corpus(
     verbose=True
 )
 print(f"Corpus: sentences={len(corpus)}", file=sys.stderr)
+
 
 if max_length == -1:
     print("Assertions...", file=sys.stderr)

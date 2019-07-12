@@ -15,3 +15,8 @@ For users
 ```bash
 python setup.py install --record installed-files.txt
 ```
+
+
+# How To
+
+Check the recipes in `text.recipes` and check the examples.
